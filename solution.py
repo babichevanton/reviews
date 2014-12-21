@@ -15,10 +15,10 @@ class Solution:
         self.num_of_classes = 39
         self.classifiers = []
         for i in range(self.num_of_classes):
-            #self.classifiers.append(OneVsRestClassifier(MultinomialNB(alpha=1.0), n_jobs=-1))
-            self.classifiers.append(OneVsRestClassifier(MultinomialNB(alpha=1.0)))
+            self.classifiers.append(OneVsRestClassifier(MultinomialNB(alpha=1.0), n_jobs=-1))
+            #self.classifiers.append(OneVsRestClassifier(MultinomialNB(alpha=1.0)))
 
-    def text_preprocess(self, text):
+    def text_preprocess(self, text, train=True):
         text.lower()
         for punct in punctuation:
             text = text.replace(punct, ' ')
@@ -27,9 +27,10 @@ class Solution:
         tokens = filter(lambda x: len(x) > 3, tokens) # remove stop-words
         stemmer = RussianStemmer()
         tokens = map(stemmer.stem, tokens)
-        for token in tokens:
-            if token not in self.vocabulary.keys():
-                self.vocabulary[token] = len(self.vocabulary)
+        if train:
+            for token in tokens:
+                if token not in self.vocabulary.keys():
+                    self.vocabulary[token] = len(self.vocabulary)
         return tokens
 
     def get_features(self, tokens):
@@ -73,13 +74,13 @@ class Solution:
         classes = []
 
         for text in texts:
-            tokens = self.text_preprocess(text)
+            tokens = self.text_preprocess(text, train=False)
             features = self.get_features(tokens)
 
             one_text_prediction = []
             for i in range(self.num_of_classes):
                 one_text_prediction.append(self.classifiers[i].predict(features)[0])
-            prediction = np.array().mean(0)
+            prediction = np.array(one_text_prediction).mean(0)
             answer = []
             for i in range(len(prediction)):
                 if prediction[i] >= 0.5:
@@ -120,8 +121,12 @@ def get_train_data(filename):
 if __name__ == '__main__':
     training_corpus = get_train_data('reviews.json')
     solution = Solution()
-    solution.train((training_corpus[0][:500], training_corpus[1][:500]))
+    solution.train((training_corpus[0][:-10], training_corpus[1][:-10]))
     texts = training_corpus[0][-10:]
     classes = solution.getClasses(texts)
+    i = 1
     for one_class in classes:
-        print one_class
+        print "response " + str(i)
+        i += 1
+        for characteristic in one_class:
+            print characteristic[0], characteristic[1]
