@@ -5,15 +5,10 @@ from string import punctuation, digits
 
 from sklearn.feature_extraction.text import CountVectorizer
 
-from sklearn.pipeline import Pipeline
-
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.svm import LinearSVC
-from sklearn.linear_model import LogisticRegression
-from sklearn.naive_bayes import MultinomialNB
 
 from sklearn import cross_validation
-from sklearn.grid_search import GridSearchCV
 from sklearn import metrics
 
 
@@ -115,9 +110,8 @@ class Solution:
         return text
 
     def train(self, json_data):
-        training_corpus = self.filter_train(get_train_data(json_data))
-        #training_corpus = self.filter_train(json_data)
-        #training_corpus = json_data
+        #training_corpus = self.filter_train(get_train_data(json_data))
+        training_corpus = self.filter_train(json_data)
 
         texts = training_corpus[0]
         opinions = training_corpus[1]
@@ -159,6 +153,7 @@ if __name__ == '__main__':
     trainfile = open('reviews.json', 'r')
     json_data = json.load(trainfile)
     trainfile.close()
+
     solution = Solution()
     training_corpus = get_train_data(json_data[:])
 
