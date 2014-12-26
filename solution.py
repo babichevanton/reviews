@@ -1,15 +1,19 @@
 import json
+import re
 import numpy as np
 from string import punctuation, digits
 
 from sklearn.feature_extraction.text import CountVectorizer
 
+from sklearn.pipeline import Pipeline
+
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.svm import LinearSVC
+from sklearn.linear_model import LogisticRegression
 from sklearn.naive_bayes import MultinomialNB
-from sklearn.svm import LinearSVC
 
 from sklearn import cross_validation
+from sklearn.grid_search import GridSearchCV
 from sklearn import metrics
 
 
@@ -59,7 +63,7 @@ class TargetExtractor:
 class Solution:
     def __init__(self):
         self.num_of_classes = 39
-        self.v = CountVectorizer(ngram_range=(1,2))
+        self.v = CountVectorizer(ngram_range=(1,4), analyzer='char_wb')
         self.le = TargetExtractor(self.num_of_classes)
         self.classifier = OneVsRestClassifier(LinearSVC(tol=1e-5))
 
@@ -85,31 +89,35 @@ class Solution:
             for opinion in responses[text].keys():
                 if responses[text][opinion] > max_voted:
                     max_voted = responses[text][opinion]
-            max_voted_list.append(max_voted)
+                max_voted_list.append(max_voted)
 
         # filter training corpus
         filtered_texts = responses.keys()
         opinions = [(max_voted, opinion) for (max_voted, (text, opinion)) in zip(max_voted_list, responses.items())]
-        filtered_opinions = []
+        new_texts = []
+        new_opinions = []
         for ind in range(len(filtered_texts)):
             max_voted = opinions[ind][0]
             # choose all characteristics that were estimated in the same way by all persons
-            filtered_opinion = [opinion for (opinion, voted) in opinions[ind][1].items() if (voted == max_voted)]
-            filtered_opinions.append(filtered_opinion)
+            filtered_opinion = [opinion for (opinion, voted) in opinions[ind][1].items() if (voted >= 2)]
+            if len(filtered_opinion) > 0:
+                new_texts.append(filtered_texts[ind])
+                new_opinions.append(filtered_opinion)
 
-        #return training_corpus
-        return (filtered_texts, filtered_opinions)
+        return (new_texts, new_opinions)
 
     def text_preprocess(self, text, train=True):
         for punct in punctuation:
             text = text.replace(punct, ' ')
         for digit in digits:
             text = text.replace(digit, '')
+        text = re.sub('\s+', ' ', text)
         return text
 
     def train(self, json_data):
-        #training_corpus = self.filter_train(get_train_data(json_data))
-        training_corpus = json_data
+        training_corpus = self.filter_train(get_train_data(json_data))
+        #training_corpus = self.filter_train(json_data)
+        #training_corpus = json_data
 
         texts = training_corpus[0]
         opinions = training_corpus[1]
