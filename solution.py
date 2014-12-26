@@ -32,14 +32,12 @@ class TargetExtractor:
         targets = []
         for opinion in opinions:
             one_target = np.array([0] * self.target_len)
-            ind_found = 0
             ind_notfound = len(self.all_chars)
             for char in opinion:
                 if char in self.all_chars:
-                    one_target[ind_found] = self.all_chars[char]
-                    ind_found += 1
+                    one_target[self.all_chars[char]] = 1
                 else:
-                    one_target[ind_notfound] = ind_notfound
+                    one_target[ind_notfound] = 1
                     ind_notfound += 1
             targets.append(one_target)
         return np.array(targets)
@@ -48,8 +46,8 @@ class TargetExtractor:
         opinions = []
         for one_target in targets:
             opinion = []
-            for ind in one_target:
-                if ind in self.all_inds:
+            for ind in range(len(one_target)):
+                if (one_target[ind] == 1) and (ind in self.all_inds):
                     opinion.append(self.all_inds[ind])
             opinions.append(opinion)
         return opinions
