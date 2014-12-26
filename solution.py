@@ -1,37 +1,69 @@
 import json
-from nltk.stem.snowball import RussianStemmer
-from string import punctuation
-import re
 import numpy as np
+from string import punctuation, digits
 
+from sklearn.feature_extraction.text import CountVectorizer
+
+from sklearn.multiclass import OneVsRestClassifier
+from sklearn.svm import LinearSVC
 from sklearn.naive_bayes import MultinomialNB
+from sklearn.svm import LinearSVC
+
 from sklearn import cross_validation
 from sklearn import metrics
 
 
+class TargetExtractor:
+    def __init__(self, num_of_classes):
+        self.all_chars = {}
+        self.all_inds = {}
+        self.target_len = num_of_classes
+
+    def fit(self, opinions):
+        for opinion in opinions:
+            for char in opinion:
+                if char not in self.all_chars:
+                    new_ind = len(self.all_chars)
+                    self.all_chars[char] = new_ind
+                    self.all_inds[new_ind] = char
+        return self
+
+    def transform(self, opinions):
+        targets = []
+        for opinion in opinions:
+            one_target = np.array([0] * self.target_len)
+            ind_found = 0
+            ind_notfound = len(self.all_chars)
+            for char in opinion:
+                if char in self.all_chars:
+                    one_target[ind_found] = self.all_chars[char]
+                    ind_found += 1
+                else:
+                    one_target[ind_notfound] = ind_notfound
+                    ind_notfound += 1
+            targets.append(one_target)
+        return np.array(targets)
+
+    def inverse_transform(self, targets):
+        opinions = []
+        for one_target in targets:
+            opinion = []
+            for ind in one_target:
+                if ind in self.all_inds:
+                    opinion.append(self.all_inds[ind])
+            opinions.append(opinion)
+        return opinions
+
+    def fit_transform(self, opinions):
+        return self.fit(opinions).transform(opinions)
+
+
 class Solution:
     def __init__(self):
-        self.vocabulary = {}
-        self.characteristics = {}
         self.num_of_classes = 39
-        self.classifiers = []
-        for i in range(self.num_of_classes):
-            self.classifiers.append(MultinomialNB(alpha=1.0))
-
-    def text_preprocess(self, text, train=True):
-        text.lower()
-        for punct in punctuation:
-            text = text.replace(punct, ' ')
-        text = re.sub('\s+', ' ', text) # replace multiple whitespaces with one ' '
-        tokens = text.split(' ')
-        tokens = filter(lambda x: len(x) > 3, tokens) # remove stop-words
-        stemmer = RussianStemmer()
-        tokens = map(stemmer.stem, tokens)
-        if train:
-            for token in tokens:
-                if token not in self.vocabulary.keys():
-                    self.vocabulary[token] = len(self.vocabulary)
-        return tokens
+        self.v = CountVectorizer(ngram_range=(1,2))
+        self.le = TargetExtractor(self.num_of_classes)
+        self.classifier = OneVsRestClassifier(LinearSVC(tol=1e-5))
 
     def filter_train(self, training_corpus):
         responses = {}
@@ -70,116 +102,33 @@ class Solution:
         #return training_corpus
         return (filtered_texts, filtered_opinions)
 
-    def get_features(self, tokens):
-        features = np.array([0] * len(self.vocabulary))
-        for token in tokens:
-            token_index = self.vocabulary.get(token, -1)
-            if token_index != -1:
-                features[token_index] += 1
-        return features
-
-    def get_targets(self, opinions, class_index):
-        # getting global targets from opinions
-        targets_global = []
-        for opinion in opinions:
-            for characteristic in opinion:
-                if characteristic not in self.characteristics.keys():
-                    self.characteristics[characteristic] = len(self.characteristics)
-
-            targets_global.append((map(lambda x: self.characteristics[x], opinion)))
-
-        targets = []
-        cur_target = 0
-        for text_targets in targets_global:
-            for target in text_targets:
-                if target == class_index:
-                    cur_target = 1
-                    break
-            targets.append(cur_target)
-
-        return targets
+    def text_preprocess(self, text, train=True):
+        for punct in punctuation:
+            text = text.replace(punct, ' ')
+        for digit in digits:
+            text = text.replace(digit, '')
+        return text
 
     def train(self, json_data):
         #training_corpus = self.filter_train(get_train_data(json_data))
         training_corpus = json_data
 
-        texts = training_corpus[0][:]
-        opinions = training_corpus[1][:]
+        texts = training_corpus[0]
+        opinions = training_corpus[1]
 
-        #prepare texts
-        all_tokens = []
-        for text in texts:
-            all_tokens.append(self.text_preprocess(text))
+        for text_ind in range(len(texts)):
+            texts[text_ind] = self.text_preprocess(texts[text_ind])
 
-        # getting features from texts
-        features = []
-        for one_text_tokens in all_tokens:
-            features.append(self.get_features(one_text_tokens))
+        features = self.v.fit_transform(texts);
+        targets = self.le.fit_transform(opinions)
 
-        # training
-        # "i" classifier determines "i" class
-        for i in range(self.num_of_classes):
-            targets = self.get_targets(opinions, i)
-            self.classifiers[i].fit(features, targets)
+        self.classifier.fit(features, targets)
 
     def getClasses(self, texts):
-        # construct feature vectors
-        features = []
-        for text in texts:
-            tokens = self.text_preprocess(text, train=False)
-            text_features = self.get_features(tokens)
-            features.append(text_features)
-
-        # prediction
-        predictions = []
-        for i in range(self.num_of_classes):
-            #predictions.append(self.classifiers[i].predict(features))
-            one_prediction_proba = self.classifiers[i].predict_proba(features)
-            predictions.append(one_prediction_proba)
-
-        # get list of characteristics
-        characteristic_list = []
-        for i in range(len(self.characteristics)):
-            for item in self.characteristics.items():
-                if i == item[1]:
-                    characteristic_list.append(item[0])
-
-        # get answer from predictions
-        classes = [ [] for i in range(len(texts))]
-        #classes_proba = [ [] for i in range(len(texts))]
-        for characteristic in range(len(predictions)):
-            for text_ind in range(len(predictions[characteristic])):
-                #classes_proba[text_ind].append(predictions[characteristic][text_ind])
-                if (characteristic < len(characteristic_list)) and (predictions[characteristic][text_ind][0] >= 0.5):
-                    classes[text_ind].append(characteristic_list[characteristic])
-
-        #return classes_proba
+        features = self.v.transform(texts);
+        predictions = self.classifier.predict(features)
+        classes = self.le.inverse_transform(predictions)
         return classes
-
-    def score(self, texts, opinions):
-        features = []
-        for text in texts:
-            tokens = self.text_preprocess(text, train=False)
-            text_features = self.get_features(tokens)
-            features.append(text_features)
-
-        for i in range(self.num_of_classes):
-            targets = self.get_targets(opinions, i)
-            one_prediction_score = self.classifiers[i].score(features, targets)
-            print one_prediction_score
-
-    def compute_ft(self, training_corpus):
-
-        features = []
-        for text in texts:
-            tokens = self.text_preprocess(text, train=False)
-            text_features = self.get_features(tokens)
-            features.append(text_features)
-
-        for i in range(self.num_of_classes):
-            targets = self.get_targets(opinions, i)
-            one_prediction_score = self.classifiers[i].score(features, targets)
-            print one_prediction_score
 
 
 def get_train_data(json_data):
@@ -206,10 +155,16 @@ if __name__ == '__main__':
     trainfile.close()
     solution = Solution()
     training_corpus = get_train_data(json_data[:])
+
     texts_train, texts_test, opinions_train, opinions_test = cross_validation.train_test_split(training_corpus[0],
                                                                                                training_corpus[1],
-                                                                                               test_size=0.4,
-                                                                                               random_state=0)
+                                                                                               test_size=0.3,
+                                                                                               random_state=1)
+    
     solution.train((texts_train, opinions_train))
-    classes = solution.score(texts_test, opinions_test)
-    solution.compute_ft(training_corpus)
+    res = solution.getClasses(texts_test)
+    resv = solution.le.transform(res)
+    opv = solution.le.transform(opinions_test)
+
+    score = metrics.f1_score(resv, opv, average='micro')
+    print score
